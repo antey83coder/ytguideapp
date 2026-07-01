@@ -2,6 +2,9 @@ import re
 import webbrowser
 import traceback
 
+from kivy.metrics import dp
+from kivy.clock import Clock
+
 from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
@@ -9,14 +12,11 @@ from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.label import MDLabel
-from kivymd.uix.list import MDList
 from kivymd.uix.menu import MDDropdownMenu
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.card import MDCard
 from kivy.uix.image import AsyncImage
 from kivy.uix.behaviors import ButtonBehavior
-from kivy.uix.widget import Widget
-from kivy.clock import Clock
 
 class ClickableThumbnail(ButtonBehavior, AsyncImage):
     def __init__(self, **kwargs):
@@ -28,7 +28,7 @@ class ClickableThumbnail(ButtonBehavior, AsyncImage):
         with self.canvas.before:
             from kivy.graphics import Color, RoundedRectangle
             Color(1, 1, 1, 1)
-            RoundedRectangle(pos=self.pos, size=self.size, radius=[8, 8, 8, 8])
+            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(8), dp(8), dp(8), dp(8)])
 
 def get_stem(word):
     word = word.lower().strip().replace('_', '')
@@ -73,50 +73,60 @@ class MainScreen(MDScreen):
         
         self.table = None
         
-        main_layout = MDBoxLayout(orientation='vertical', padding=[16, 8, 16, 8], spacing=0)
+        # Головний контейнер на весь екран
+        main_layout = MDBoxLayout(orientation='vertical')
         
-        main_layout.add_widget(MDLabel(
-            text="🎬 YT Personal Guide", font_style="Subtitle2", halign="center", size_hint_y=None, height=24
+        # Красивий синій заголовок (без емодзі, щоб уникнути квадратиків)
+        header = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=[0.12, 0.58, 0.95, 1], padding=[dp(16), 0, dp(16), 0])
+        header.add_widget(MDLabel(
+            text="YT Personal Guide", font_style="H6", halign="center", 
+            theme_text_color="Custom", text_color=[1, 1, 1, 1], bold=True
         ))
-        main_layout.add_widget(Widget(size_hint_y=None, height=10))
+        main_layout.add_widget(header)
         
-        self.input_url = MDTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_y=None, height=30)
-        main_layout.add_widget(self.input_url)
-        main_layout.add_widget(Widget(size_hint_y=None, height=10)) 
+        # Скрол-зона для контенту
+        scroll = MDScrollView(do_scroll_x=False)
+        content_layout = MDBoxLayout(orientation='vertical', padding=dp(16), spacing=dp(16), adaptive_height=True)
         
-        self.input_theme = MDTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=30)
+        # Жорстко фіксуємо висоту полів через size_hint_y=None, щоб вони не схлопувались
+        self.input_url = MDTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_y=None, height=dp(68))
+        content_layout.add_widget(self.input_url)
+        
+        self.input_theme = MDTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=dp(68))
         self.input_theme.bind(on_touch_down=self.on_theme_field_click)
-        main_layout.add_widget(self.input_theme)
-        main_layout.add_widget(Widget(size_hint_y=None, height=10)) 
+        content_layout.add_widget(self.input_theme)
         
-        self.input_subtheme = MDTextField(hint_text="Підтема", mode="rectangle", size_hint_y=None, height=30)
-        main_layout.add_widget(self.input_subtheme)
-        main_layout.add_widget(Widget(size_hint_y=None, height=10)) 
+        self.input_subtheme = MDTextField(hint_text="Підтема", mode="rectangle", size_hint_y=None, height=dp(68))
+        content_layout.add_widget(self.input_subtheme)
         
-        self.input_keywords = MDTextField(hint_text="Ключові слова", mode="rectangle", size_hint_y=None, height=30)
-        main_layout.add_widget(self.input_keywords)
-        main_layout.add_widget(Widget(size_hint_y=None, height=10)) 
+        self.input_keywords = MDTextField(hint_text="Ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
+        content_layout.add_widget(self.input_keywords)
         
-        self.input_notes = MDTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", multiline=True, size_hint_y=None, height=30)
-        main_layout.add_widget(self.input_notes)
-        main_layout.add_widget(Widget(size_hint_y=None, height=10))
+        self.input_notes = MDTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
+        content_layout.add_widget(self.input_notes)
         
-        self.btn_add = MDRaisedButton(text="ЗБЕРЕГТИ В КАТАЛОГ", pos_hint={"center_x": .5}, size_hint_x=0.9, size_hint_y=None, height=38)
+        # Кнопка збереження
+        self.btn_add = MDRaisedButton(text="ЗБЕРЕГТИ В КАТАЛОГ", size_hint_x=1, size_hint_y=None, height=dp(50))
         self.btn_add.bind(on_release=self.process_add_video)
-        main_layout.add_widget(self.btn_add)
+        content_layout.add_widget(self.btn_add)
         
-        self.status_label = MDLabel(text="Запуск інтерфейсу...", halign="center", theme_text_color="Secondary", size_hint_y=None, height=20)
-        main_layout.add_widget(self.status_label)
+        # Статус-лейбл з динамічним розширенням висоти для довгих помилок
+        self.status_label = MDLabel(text="Запуск інтерфейсу...", halign="center", theme_text_color="Secondary", size_hint_y=None, height=dp(40))
+        self.status_label.bind(width=lambda *x: self.status_label.setter('text_size')(self.status_label, (self.status_label.width, None)))
+        self.status_label.bind(texture_size=lambda *x: self.status_label.setter('height')(self.status_label, max(self.status_label.texture_size[1], dp(40))))
+        content_layout.add_widget(self.status_label)
         
-        self.search_field = MDTextField(hint_text="🔍 Пошук по базі...", mode="fill", size_hint_y=None, height=38)
+        # Блок пошуку
+        self.search_field = MDTextField(hint_text="🔍 Пошук по базі...", mode="fill", size_hint_y=None, height=dp(60))
         self.search_field.bind(text=self.on_search_text_change)
-        main_layout.add_widget(self.search_field)
+        content_layout.add_widget(self.search_field)
         
-        scroll = MDScrollView(size_hint_y=1) 
-        self.video_list = MDList(spacing=6)
-        scroll.add_widget(self.video_list)
+        # Список роликів (замість MDList використовуємо адаптивний MDBoxLayout для надійності верстки)
+        self.video_list = MDBoxLayout(orientation='vertical', adaptive_height=True, spacing=dp(10))
+        content_layout.add_widget(self.video_list)
+        
+        scroll.add_widget(content_layout)
         main_layout.add_widget(scroll)
-        
         self.add_widget(main_layout)
         
         Clock.schedule_once(self.delayed_init, 1.0)
@@ -124,6 +134,7 @@ class MainScreen(MDScreen):
     def delayed_init(self, dt):
         try:
             self.status_label.text = "Підключення до Airtable..."
+            self.status_label.theme_text_color = "Secondary"
             from pyairtable import Table
             
             TOKEN = "patRPP4JMXbbOfL0f.b89351374308e546fb099221ed2aa459907c98740b56ac7843990c376cbc911b"
@@ -131,16 +142,15 @@ class MainScreen(MDScreen):
             TABLE_NAME = "Відео"
             
             self.table = Table(TOKEN, BASE_ID, TABLE_NAME)
-            
-            self.status_label.text = "Синхронізація..."
             self.load_data_from_base()
         except Exception as e:
-            self.status_label.text = "Помилка ініціалізації бази!"
-            self.input_notes.text = f"Помилка: {e}"
+            self.status_label.theme_text_color = "Error"
+            self.status_label.text = f"Помилка інтернету або бази:\n{e}"
 
     def load_data_from_base(self):
         if not self.table: return
         try:
+            self.status_label.text = "Синхронізація..."
             self.all_records = self.table.all()
             self.themes_set.clear()
             self.display_records(self.all_records)
@@ -150,8 +160,10 @@ class MainScreen(MDScreen):
                 if theme: self.themes_set.add(theme)
                     
             self.update_theme_menu()
-            self.status_label.text = "Каталог синхронізовано."
+            self.status_label.theme_text_color = "Primary"
+            self.status_label.text = "Каталог успішно синхронізовано."
         except Exception as e:
+            self.status_label.theme_text_color = "Error"
             self.status_label.text = f"Помилка зв'язку: {e}"
 
     def display_records(self, records_list):
@@ -167,16 +179,16 @@ class MainScreen(MDScreen):
                 img_url = "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=200"
 
             card = MDCard(
-                orientation='horizontal', padding=6, spacing=12, size_hint_y=None, height=80, 
-                elevation=1, style="filled", md_bg_color=[0.15, 0.15, 0.15, 1]
+                orientation='horizontal', padding=dp(8), spacing=dp(12), size_hint_y=None, height=dp(90), 
+                elevation=2, radius=[dp(8)], md_bg_color=[0.15, 0.15, 0.15, 1]
             )
             
-            thumb = ClickableThumbnail(source=img_url, size_hint_x=None, width=105, allow_stretch=True, keep_ratio=False)
+            thumb = ClickableThumbnail(source=img_url, size_hint_x=None, width=dp(110), allow_stretch=True, keep_ratio=False)
             thumb.bind(on_release=lambda x, url=video_url: webbrowser.open(url))
             
             text_layout = MDBoxLayout(orientation='vertical', pos_hint={"center_y": .5})
             title_btn = MDFlatButton(
-                text=title if len(title) < 55 else f"{title[:52]}...",
+                text=title if len(title) < 50 else f"{title[:47]}...",
                 theme_text_color="Custom", text_color=[0.9, 0.9, 0.9, 1], halign="left", pos_hint={"x": 0}
             )
             title_btn.bind(on_release=lambda x, r_id=rec_id: self.open_edit_dialog(r_id))
@@ -219,7 +231,7 @@ class MainScreen(MDScreen):
             {"viewclass": "OneLineListItem", "text": theme, "on_release": lambda x=theme: self.set_theme(x)}
             for theme in sorted(list(self.themes_set))
         ]
-        self.menu = MDDropdownMenu(caller=self.input_theme, items=menu_items, width_mult=4, max_height=200)
+        self.menu = MDDropdownMenu(caller=self.input_theme, items=menu_items, width_mult=4, max_height=dp(250))
 
     def on_theme_field_click(self, instance, touch):
         if instance.collide_point(*touch.pos):
@@ -241,6 +253,7 @@ class MainScreen(MDScreen):
         if not url or not theme or not self.table:
             return
 
+        self.status_label.theme_text_color = "Primary"
         self.status_label.text = "Обробка відео..."
         title, channel, thumbnail = extract_youtube_info(url)
         
@@ -254,6 +267,7 @@ class MainScreen(MDScreen):
             self.input_notes.text = ""
             self.load_data_from_base()
         except Exception as e:
+            self.status_label.theme_text_color = "Error"
             self.status_label.text = f"Помилка збереження: {e}"
 
     def open_edit_dialog(self, record_id):
@@ -265,17 +279,17 @@ class MainScreen(MDScreen):
                 break
         if not target_fields: return
             
-        self.edit_subtheme = MDTextField(text=target_fields.get('Підтема', ''), hint_text="Редагувати підтему", mode="rectangle")
-        self.edit_keywords = MDTextField(text=target_fields.get('Ключові слова', ''), hint_text="Редагувати ключові слова", mode="rectangle")
-        self.edit_notes = MDTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", multiline=True)
+        self.edit_subtheme = MDTextField(text=target_fields.get('Підтема', ''), hint_text="Редагувати підтему", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.edit_keywords = MDTextField(text=target_fields.get('Ключові слова', ''), hint_text="Редагувати ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.edit_notes = MDTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
         
-        dialog_layout = MDBoxLayout(orientation="vertical", spacing=10, size_hint_y=None, height=220)
+        dialog_layout = MDBoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None, height=dp(260))
         dialog_layout.add_widget(self.edit_subtheme)
         dialog_layout.add_widget(self.edit_keywords)
         dialog_layout.add_widget(self.edit_notes)
         
         self.dialog = MDDialog(
-            title="📝 Виправлення даних ролика", type="custom", content_cls=dialog_layout,
+            title="Редагування", type="custom", content_cls=dialog_layout,
             buttons=[
                 MDFlatButton(text="ВИДАЛИТИ", theme_text_color="Error", on_release=self.delete_record),
                 MDFlatButton(text="СКАСУВАТИ", on_release=lambda x: self.dialog.dismiss()),
@@ -298,6 +312,7 @@ class MainScreen(MDScreen):
             })
             self.load_data_from_base()
         except Exception as e:
+            self.status_label.theme_text_color = "Error"
             self.status_label.text = f"Помилка: {e}"
 
     def delete_record(self, instance):
@@ -307,9 +322,11 @@ class MainScreen(MDScreen):
             
         try:
             self.table.delete(self.current_edit_id)
+            self.status_label.theme_text_color = "Primary"
             self.status_label.text = "Відео успішно видалено."
             self.load_data_from_base()
         except Exception as e:
+            self.status_label.theme_text_color = "Error"
             self.status_label.text = f"Помилка видалення: {e}"
 
 class YouTubeCatalogApp(MDApp):
