@@ -124,21 +124,19 @@ class MainScreen(MDScreen):
     def delayed_init(self, dt):
         try:
             self.status_label.text = "Підключення до Airtable..."
-            # ВЕРСІЯ 1.5.0 ВИКОРИСТОВУЄ КЛАС Table ЗАМІСТЬ Api
             from pyairtable import Table
             
             TOKEN = "patRPP4JMXbbOfL0f.b89351374308e546fb099221ed2aa459907c98740b56ac7843990c376cbc911b"
             BASE_ID = "appH9W7WJOHDC1wdH"
             TABLE_NAME = "Відео"
             
-            # Підключаємося напряму до таблиці
             self.table = Table(TOKEN, BASE_ID, TABLE_NAME)
             
             self.status_label.text = "Синхронізація..."
             self.load_data_from_base()
         except Exception as e:
             self.status_label.text = "Помилка ініціалізації бази!"
-            self.input_notes.text = f"Сфотографуйте це:\n{traceback.format_exc()}"
+            self.input_notes.text = f"Помилка: {e}"
 
     def load_data_from_base(self):
         if not self.table: return
@@ -322,33 +320,3 @@ class YouTubeCatalogApp(MDApp):
 
 if __name__ == '__main__':
     YouTubeCatalogApp().run()
-
-except Exception as e:
-    from kivy.app import App
-    from kivy.uix.label import Label
-    from kivy.uix.scrollview import ScrollView
-    from kivy.core.window import Window
-
-    class CrashReporterApp(App):
-        def build(self):
-            Window.clearcolor = (0.1, 0.1, 0.1, 1)
-            scroll = ScrollView(size_hint=(1, 1))
-            error_text = f"ПОМИЛКА ЗАПУСКУ!\nСфотографуйте цей екран:\n\n{traceback.format_exc()}"
-            
-            label = Label(
-                text=error_text,
-                size_hint_y=None,
-                font_size='14sp',
-                halign='left',
-                valign='top',
-                color=(1, 0.2, 0.2, 1)
-            )
-            label.bind(
-                width=lambda *x: label.setter('text_size')(label, (label.width - 40, None)),
-                texture_size=lambda *x: label.setter('height')(label, label.texture_size[1] + 40)
-            )
-            scroll.add_widget(label)
-            return scroll
-
-    if __name__ == '__main__':
-        CrashReporterApp().run()
