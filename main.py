@@ -11,13 +11,70 @@ from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.button import MDRaisedButton, MDFlatButton, MDIconButton
+from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.label import MDLabel
 from kivymd.uix.menu import MDDropdownMenu
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.card import MDCard
 from kivy.uix.image import AsyncImage
 from kivy.uix.behaviors import ButtonBehavior
+
+# =====================================================================
+# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ З ПРИМУСОВИМ СИСТЕМНИМ БУФЕРОМ
+# =====================================================================
+class AdvancedTextField(MDTextField):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.clipboard_menu = None
+
+    def on_touch_down(self, touch):
+        result = super().on_touch_down(touch)
+        if self.collide_point(*touch.pos) and touch.is_double_tap:
+            Clock.schedule_once(lambda dt: self.show_clipboard_menu(), 0.1)
+        return result
+
+    def show_clipboard_menu(self):
+        menu_items = [
+            {"viewclass": "OneLineListItem", "text": "✂️ Вирізати", "on_release": lambda: self.handle_action("cut")},
+            {"viewclass": "OneLineListItem", "text": "📋 Копіювати", "on_release": lambda: self.handle_action("copy")},
+            {"viewclass": "OneLineListItem", "text": "📥 Вставити", "on_release": lambda: self.handle_action("paste")},
+        ]
+        self.clipboard_menu = MDDropdownMenu(
+            caller=self, 
+            items=menu_items, 
+            width_mult=3,
+            max_height=dp(170),
+            position="bottom"
+        )
+        self.clipboard_menu.open()
+
+    def handle_action(self, action):
+        if action == "cut":
+            # Примусово копіюємо в системний буфер і видаляємо
+            if self.selection_text:
+                Clipboard.copy(self.selection_text)
+                self.delete_selection()
+            else:
+                Clipboard.copy(self.text)
+                self.text = ""
+                
+        elif action == "copy":
+            # Примусово копіюємо в системний буфер
+            if self.selection_text:
+                Clipboard.copy(self.selection_text)
+            else:
+                Clipboard.copy(self.text)
+                
+        elif action == "paste":
+            # Беремо текст із системного буфера і вставляємо
+            text_to_paste = Clipboard.paste()
+            if text_to_paste:
+                if self.selection_text:
+                    self.delete_selection()
+                self.insert_text(text_to_paste)
+                
+        if self.clipboard_menu:
+            self.clipboard_menu.dismiss()
 
 class ClickableThumbnail(ButtonBehavior, AsyncImage):
     def __init__(self, **kwargs):
@@ -86,32 +143,20 @@ class MainScreen(MDScreen):
         scroll = MDScrollView(do_scroll_x=False)
         content_layout = MDBoxLayout(orientation='vertical', padding=dp(16), spacing=dp(16), adaptive_height=True)
         
-        # --- ГОРИЗОНТАЛЬНИЙ БЛОК ДЛЯ ПОСИЛАННЯ ТА КНОПКИ ВСТАВКИ ---
-        url_layout = MDBoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(68))
-        self.input_url = MDTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_x=1)
+        self.input_url = AdvancedTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_y=None, height=dp(68))
+        content_layout.add_widget(self.input_url)
         
-        btn_paste = MDIconButton(
-            icon="content-paste",
-            pos_hint={"center_y": .5},
-            on_release=self.paste_from_clipboard
-        )
-        
-        url_layout.add_widget(self.input_url)
-        url_layout.add_widget(btn_paste)
-        content_layout.add_widget(url_layout)
-        # -----------------------------------------------------------
-        
-        self.input_theme = MDTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.input_theme = AdvancedTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=dp(68))
         self.input_theme.bind(on_touch_down=self.on_theme_field_click)
         content_layout.add_widget(self.input_theme)
         
-        self.input_subtheme = MDTextField(hint_text="Підтема", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.input_subtheme = AdvancedTextField(hint_text="Підтема", mode="rectangle", size_hint_y=None, height=dp(68))
         content_layout.add_widget(self.input_subtheme)
         
-        self.input_keywords = MDTextField(hint_text="Ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.input_keywords = AdvancedTextField(hint_text="Ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
         content_layout.add_widget(self.input_keywords)
         
-        self.input_notes = MDTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
+        self.input_notes = AdvancedTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
         content_layout.add_widget(self.input_notes)
         
         self.btn_add = MDRaisedButton(text="ЗБЕРЕГТИ В КАТАЛОГ", size_hint_x=1, size_hint_y=None, height=dp(50))
@@ -123,7 +168,7 @@ class MainScreen(MDScreen):
         self.status_label.bind(texture_size=lambda *x: self.status_label.setter('height')(self.status_label, max(self.status_label.texture_size[1], dp(40))))
         content_layout.add_widget(self.status_label)
         
-        self.search_field = MDTextField(hint_text="🔍 Пошук по базі...", mode="fill", size_hint_y=None, height=dp(60))
+        self.search_field = AdvancedTextField(hint_text="🔍 Пошук по базі...", mode="fill", size_hint_y=None, height=dp(60))
         self.search_field.bind(text=self.on_search_text_change)
         content_layout.add_widget(self.search_field)
         
@@ -135,12 +180,6 @@ class MainScreen(MDScreen):
         self.add_widget(main_layout)
         
         Clock.schedule_once(self.delayed_init, 1.0)
-
-    # ФУНКЦІЯ ДЛЯ КНОПКИ ВСТАВКИ З БУФЕРА
-    def paste_from_clipboard(self, instance):
-        pasted_text = Clipboard.paste()
-        if pasted_text:
-            self.input_url.text = pasted_text
 
     def delayed_init(self, dt):
         try:
@@ -246,9 +285,8 @@ class MainScreen(MDScreen):
 
     def on_theme_field_click(self, instance, touch):
         if instance.collide_point(*touch.pos):
-            if self.menu: self.menu.open()
-            return True
-        return False
+            if self.menu and not touch.is_double_tap:
+                self.menu.open()
 
     def set_theme(self, theme_text):
         self.input_theme.text = theme_text
@@ -290,9 +328,9 @@ class MainScreen(MDScreen):
                 break
         if not target_fields: return
             
-        self.edit_subtheme = MDTextField(text=target_fields.get('Підтема', ''), hint_text="Редагувати підтему", mode="rectangle", size_hint_y=None, height=dp(68))
-        self.edit_keywords = MDTextField(text=target_fields.get('Ключові слова', ''), hint_text="Редагувати ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
-        self.edit_notes = MDTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
+        self.edit_subtheme = AdvancedTextField(text=target_fields.get('Підтема', ''), hint_text="Редагувати підтему", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.edit_keywords = AdvancedTextField(text=target_fields.get('Ключові слова', ''), hint_text="Редагувати ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.edit_notes = AdvancedTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
         
         dialog_layout = MDBoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None, height=dp(260))
         dialog_layout.add_widget(self.edit_subtheme)
