@@ -4,13 +4,14 @@ import traceback
 
 from kivy.metrics import dp
 from kivy.clock import Clock
+from kivy.core.clipboard import Clipboard
 
 from kivymd.app import MDApp
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.button import MDRaisedButton, MDFlatButton
+from kivymd.uix.button import MDRaisedButton, MDFlatButton, MDIconButton
 from kivymd.uix.label import MDLabel
 from kivymd.uix.menu import MDDropdownMenu
 from kivymd.uix.dialog import MDDialog
@@ -73,10 +74,8 @@ class MainScreen(MDScreen):
         
         self.table = None
         
-        # Головний контейнер на весь екран
         main_layout = MDBoxLayout(orientation='vertical')
         
-        # Красивий синій заголовок (без емодзі, щоб уникнути квадратиків)
         header = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=[0.12, 0.58, 0.95, 1], padding=[dp(16), 0, dp(16), 0])
         header.add_widget(MDLabel(
             text="YT Personal Guide", font_style="H6", halign="center", 
@@ -84,13 +83,23 @@ class MainScreen(MDScreen):
         ))
         main_layout.add_widget(header)
         
-        # Скрол-зона для контенту
         scroll = MDScrollView(do_scroll_x=False)
         content_layout = MDBoxLayout(orientation='vertical', padding=dp(16), spacing=dp(16), adaptive_height=True)
         
-        # Жорстко фіксуємо висоту полів через size_hint_y=None, щоб вони не схлопувались
-        self.input_url = MDTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_y=None, height=dp(68))
-        content_layout.add_widget(self.input_url)
+        # --- ГОРИЗОНТАЛЬНИЙ БЛОК ДЛЯ ПОСИЛАННЯ ТА КНОПКИ ВСТАВКИ ---
+        url_layout = MDBoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(68))
+        self.input_url = MDTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_x=1)
+        
+        btn_paste = MDIconButton(
+            icon="content-paste",
+            pos_hint={"center_y": .5},
+            on_release=self.paste_from_clipboard
+        )
+        
+        url_layout.add_widget(self.input_url)
+        url_layout.add_widget(btn_paste)
+        content_layout.add_widget(url_layout)
+        # -----------------------------------------------------------
         
         self.input_theme = MDTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=dp(68))
         self.input_theme.bind(on_touch_down=self.on_theme_field_click)
@@ -105,23 +114,19 @@ class MainScreen(MDScreen):
         self.input_notes = MDTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
         content_layout.add_widget(self.input_notes)
         
-        # Кнопка збереження
         self.btn_add = MDRaisedButton(text="ЗБЕРЕГТИ В КАТАЛОГ", size_hint_x=1, size_hint_y=None, height=dp(50))
         self.btn_add.bind(on_release=self.process_add_video)
         content_layout.add_widget(self.btn_add)
         
-        # Статус-лейбл з динамічним розширенням висоти для довгих помилок
         self.status_label = MDLabel(text="Запуск інтерфейсу...", halign="center", theme_text_color="Secondary", size_hint_y=None, height=dp(40))
         self.status_label.bind(width=lambda *x: self.status_label.setter('text_size')(self.status_label, (self.status_label.width, None)))
         self.status_label.bind(texture_size=lambda *x: self.status_label.setter('height')(self.status_label, max(self.status_label.texture_size[1], dp(40))))
         content_layout.add_widget(self.status_label)
         
-        # Блок пошуку
         self.search_field = MDTextField(hint_text="🔍 Пошук по базі...", mode="fill", size_hint_y=None, height=dp(60))
         self.search_field.bind(text=self.on_search_text_change)
         content_layout.add_widget(self.search_field)
         
-        # Список роликів (замість MDList використовуємо адаптивний MDBoxLayout для надійності верстки)
         self.video_list = MDBoxLayout(orientation='vertical', adaptive_height=True, spacing=dp(10))
         content_layout.add_widget(self.video_list)
         
@@ -130,6 +135,12 @@ class MainScreen(MDScreen):
         self.add_widget(main_layout)
         
         Clock.schedule_once(self.delayed_init, 1.0)
+
+    # ФУНКЦІЯ ДЛЯ КНОПКИ ВСТАВКИ З БУФЕРА
+    def paste_from_clipboard(self, instance):
+        pasted_text = Clipboard.paste()
+        if pasted_text:
+            self.input_url.text = pasted_text
 
     def delayed_init(self, dt):
         try:
