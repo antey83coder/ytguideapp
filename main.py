@@ -24,11 +24,8 @@ from kivy.uix.behaviors import ButtonBehavior
 # =====================================================================
 class AdvancedTextField(MDTextField):
     def __init__(self, **kwargs):
-        # 1. Вмикаємо розумний автопідбір тексту Android (Т9)
         kwargs['keyboard_suggestions'] = True
         
-        # 2. ТРЮК: Робимо всі поля багаторядковими, щоб Kivy не конфліктував
-        # з клавіатурою Android і не дублював текст.
         if 'multiline' not in kwargs:
             kwargs['multiline'] = True
             
@@ -162,8 +159,10 @@ class MainScreen(MDScreen):
         url_layout.add_widget(btn_paste)
         content_layout.add_widget(url_layout)
         
+        # Поле Теми тепер теж викликає оновлення фільтру при зміні тексту
         self.input_theme = AdvancedTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=dp(68))
         self.input_theme.bind(on_touch_down=self.on_theme_field_click)
+        self.input_theme.bind(text=self.apply_filters)
         content_layout.add_widget(self.input_theme)
         
         self.input_subtheme = AdvancedTextField(hint_text="Підтема", mode="rectangle", size_hint_y=None, height=dp(68))
@@ -184,8 +183,9 @@ class MainScreen(MDScreen):
         self.status_label.bind(texture_size=lambda *x: self.status_label.setter('height')(self.status_label, max(self.status_label.texture_size[1], dp(40))))
         content_layout.add_widget(self.status_label)
         
+        # Поле пошуку
         self.search_field = AdvancedTextField(hint_text="🔍 Пошук по базі...", mode="fill", size_hint_y=None, height=dp(60))
-        self.search_field.bind(text=self.on_search_text_change)
+        self.search_field.bind(text=self.apply_filters)
         content_layout.add_widget(self.search_field)
         
         self.video_list = MDBoxLayout(orientation='vertical', adaptive_height=True, spacing=dp(10))
@@ -224,18 +224,61 @@ class MainScreen(MDScreen):
             self.status_label.text = "Синхронізація..."
             self.all_records = self.table.all()
             self.themes_set.clear()
-            self.display_records(self.all_records)
             
             for record in self.all_records:
                 theme = record.get('fields', {}).get("Тема")
                 if theme: self.themes_set.add(theme)
                     
             self.update_theme_menu()
+            
+            # Замість простого display_records, викликаємо загальний фільтр,
+            # щоб застосувати поточні введені значення (якщо вони є)
+            self.apply_filters()
+            
             self.status_label.theme_text_color = "Primary"
             self.status_label.text = "Каталог успішно синхронізовано."
         except Exception as e:
             self.status_label.theme_text_color = "Error"
             self.status_label.text = f"Помилка зв'язку: {e}"
+
+    # ЄДИНА ФУНКЦІЯ ФІЛЬТРАЦІЇ ДЛЯ ТЕМИ І ПОШУКУ
+    def apply_filters(self, *args):
+        search_text = self.search_field.text.strip()
+        theme_text = self.input_theme.text.strip()
+        
+        filtered_records = self.all_records
+        
+        # 1. Відсікаємо за темою (якщо поле Теми не порожнє)
+        if theme_text:
+            filtered_records = [
+                r for r in filtered_records 
+                if theme_text.lower() in r.get('fields', {}).get('Тема', '').lower()
+            ]
+            
+        # 2. Відсікаємо за загальним пошуком (якщо поле пошуку не порожнє)
+        if search_text:
+            query_stems = [get_stem(w) for w in tokenize_text(search_text)]
+            temp_records = []
+            
+            for record in filtered_records:
+                fields = record.get('fields', {})
+                search_zone_text = " ".join([
+                    fields.get('Назва відео', ''), fields.get('Опис', ''),
+                    fields.get('Ключові слова', ''), fields.get('Нотатки', ''),
+                    fields.get('Тема', ''), fields.get('Підтема', '')
+                ])
+                base_stems = [get_stem(w) for w in tokenize_text(search_zone_text)]
+                
+                match = True
+                for q_stem in query_stems:
+                    if not any(q_stem in b_stem or b_stem in q_stem for b_stem in base_stems):
+                        match = False
+                        break
+                if match: temp_records.append(record)
+                
+            filtered_records = temp_records
+            
+        self.display_records(filtered_records)
 
     def display_records(self, records_list):
         self.video_list.clear_widgets()
@@ -269,33 +312,6 @@ class MainScreen(MDScreen):
             card.add_widget(text_layout)
             self.video_list.add_widget(card)
 
-    def on_search_text_change(self, instance, text):
-        query_text = text.strip()
-        if not query_text:
-            self.display_records(self.all_records)
-            return
-            
-        query_stems = [get_stem(w) for w in tokenize_text(query_text)]
-        filtered_records = []
-        
-        for record in self.all_records:
-            fields = record.get('fields', {})
-            search_zone_text = " ".join([
-                fields.get('Назва відео', ''), fields.get('Опис', ''),
-                fields.get('Ключові слова', ''), fields.get('Нотатки', ''),
-                fields.get('Тема', ''), fields.get('Підтема', '')
-            ])
-            base_stems = [get_stem(w) for w in tokenize_text(search_zone_text)]
-            
-            match = True
-            for q_stem in query_stems:
-                if not any(q_stem in b_stem or b_stem in q_stem for b_stem in base_stems):
-                    match = False
-                    break
-            if match: filtered_records.append(record)
-                
-        self.display_records(filtered_records)
-
     def update_theme_menu(self):
         if not self.themes_set: return
         menu_items = [
@@ -312,6 +328,7 @@ class MainScreen(MDScreen):
     def set_theme(self, theme_text):
         self.input_theme.text = theme_text
         if self.menu: self.menu.dismiss()
+        # Метод apply_filters викликається автоматично, бо ми змінили текст поля!
 
     def process_add_video(self, instance):
         url = self.input_url.text.strip()
@@ -335,6 +352,7 @@ class MainScreen(MDScreen):
             })
             self.input_url.text = ""
             self.input_notes.text = ""
+            # Оновлюємо дані, зберігаючи обрану тему (щоб зручно було додати наступне відео в ту ж категорію)
             self.load_data_from_base()
         except Exception as e:
             self.status_label.theme_text_color = "Error"
