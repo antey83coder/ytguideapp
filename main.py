@@ -11,7 +11,7 @@ from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.button import MDRaisedButton, MDFlatButton
+from kivymd.uix.button import MDRaisedButton, MDFlatButton, MDIconButton
 from kivymd.uix.label import MDLabel
 from kivymd.uix.menu import MDDropdownMenu
 from kivymd.uix.dialog import MDDialog
@@ -20,10 +20,15 @@ from kivy.uix.image import AsyncImage
 from kivy.uix.behaviors import ButtonBehavior
 
 # =====================================================================
-# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ З ПРИМУСОВИМ СИСТЕМНИМ БУФЕРОМ
+# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ З ПРИМУСОВИМ СИСТЕМНИМ БУФЕРОМ ТА ПІДКАЗКАМИ
 # =====================================================================
 class AdvancedTextField(MDTextField):
     def __init__(self, **kwargs):
+        # Примусово вмикаємо підказки (Т9/словник) клавіатури смартфона
+        kwargs['keyboard_suggestions'] = True
+        if 'input_type' not in kwargs:
+            kwargs['input_type'] = 'text'
+            
         super().__init__(**kwargs)
         self.clipboard_menu = None
 
@@ -50,23 +55,18 @@ class AdvancedTextField(MDTextField):
 
     def handle_action(self, action):
         if action == "cut":
-            # Примусово копіюємо в системний буфер і видаляємо
             if self.selection_text:
                 Clipboard.copy(self.selection_text)
                 self.delete_selection()
             else:
                 Clipboard.copy(self.text)
                 self.text = ""
-                
         elif action == "copy":
-            # Примусово копіюємо в системний буфер
             if self.selection_text:
                 Clipboard.copy(self.selection_text)
             else:
                 Clipboard.copy(self.text)
-                
         elif action == "paste":
-            # Беремо текст із системного буфера і вставляємо
             text_to_paste = Clipboard.paste()
             if text_to_paste:
                 if self.selection_text:
@@ -143,8 +143,18 @@ class MainScreen(MDScreen):
         scroll = MDScrollView(do_scroll_x=False)
         content_layout = MDBoxLayout(orientation='vertical', padding=dp(16), spacing=dp(16), adaptive_height=True)
         
-        self.input_url = AdvancedTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_y=None, height=dp(68))
-        content_layout.add_widget(self.input_url)
+        url_layout = MDBoxLayout(orientation='horizontal', spacing=dp(10), size_hint_y=None, height=dp(68))
+        self.input_url = AdvancedTextField(hint_text="Посилання на YouTube", mode="rectangle", size_hint_x=1, input_type='url')
+        
+        btn_paste = MDIconButton(
+            icon="content-paste",
+            pos_hint={"center_y": .5},
+            on_release=self.paste_from_clipboard
+        )
+        
+        url_layout.add_widget(self.input_url)
+        url_layout.add_widget(btn_paste)
+        content_layout.add_widget(url_layout)
         
         self.input_theme = AdvancedTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=dp(68))
         self.input_theme.bind(on_touch_down=self.on_theme_field_click)
@@ -180,6 +190,11 @@ class MainScreen(MDScreen):
         self.add_widget(main_layout)
         
         Clock.schedule_once(self.delayed_init, 1.0)
+
+    def paste_from_clipboard(self, instance):
+        pasted_text = Clipboard.paste()
+        if pasted_text:
+            self.input_url.text = pasted_text
 
     def delayed_init(self, dt):
         try:
