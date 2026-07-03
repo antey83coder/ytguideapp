@@ -20,7 +20,7 @@ from kivy.uix.image import AsyncImage
 from kivy.uix.behaviors import ButtonBehavior
 
 # =====================================================================
-# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ: БУФЕР ОБМІНУ + АВТОПІДБІР
+# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ: БУФЕР ОБМІНУ + ФІКС КЛАВІАТУРИ + ВИДІЛИТИ ВСЕ
 # =====================================================================
 class AdvancedTextField(MDTextField):
     def __init__(self, **kwargs):
@@ -34,15 +34,33 @@ class AdvancedTextField(MDTextField):
             
         super().__init__(**kwargs)
         self.clipboard_menu = None
+        self._first_focus = True
+        self.bind(focus=self._on_focus_fix)
+
+    # Автоматичний фікс "хаотичного вводу" при першому натисканні
+    def _on_focus_fix(self, instance, value):
+        if value and self._first_focus:
+            self._first_focus = False
+            Clock.schedule_once(self._sync_ime, 0.1)
+
+    def _sync_ime(self, dt):
+        if not self.text:
+            # Вставляємо і стираємо пробіл, щоб примусово синхронізувати Gboard
+            self.text = " "
+            self.text = ""
 
     def on_touch_down(self, touch):
         result = super().on_touch_down(touch)
         if self.collide_point(*touch.pos) and touch.is_double_tap:
+            # Забезпечуємо фокус на полі перед відкриттям меню
+            self.focus = True
             Clock.schedule_once(lambda dt: self.show_clipboard_menu(), 0.1)
         return result
 
     def show_clipboard_menu(self):
+        # Додано "Виділити все"
         menu_items = [
+            {"viewclass": "OneLineListItem", "text": "✅ Виділити все", "on_release": lambda: self.handle_action("select_all")},
             {"viewclass": "OneLineListItem", "text": "✂️ Вирізати", "on_release": lambda: self.handle_action("cut")},
             {"viewclass": "OneLineListItem", "text": "📋 Копіювати", "on_release": lambda: self.handle_action("copy")},
             {"viewclass": "OneLineListItem", "text": "📥 Вставити", "on_release": lambda: self.handle_action("paste")},
@@ -51,24 +69,31 @@ class AdvancedTextField(MDTextField):
             caller=self, 
             items=menu_items, 
             width_mult=3,
-            max_height=dp(170),
+            max_height=dp(230), # Збільшено висоту для 4 кнопок
             position="bottom"
         )
         self.clipboard_menu.open()
 
     def handle_action(self, action):
-        if action == "cut":
+        if action == "select_all":
+            # Виділяємо текст, але НЕ закриваємо меню, щоб користувач міг обрати наступну дію
+            Clock.schedule_once(lambda dt: self.select_all(), 0.05)
+            return
+            
+        elif action == "cut":
             if self.selection_text:
                 Clipboard.copy(self.selection_text)
                 self.delete_selection()
             else:
                 Clipboard.copy(self.text)
                 self.text = ""
+                
         elif action == "copy":
             if self.selection_text:
                 Clipboard.copy(self.selection_text)
             else:
                 Clipboard.copy(self.text)
+                
         elif action == "paste":
             text_to_paste = Clipboard.paste()
             if text_to_paste:
@@ -76,6 +101,7 @@ class AdvancedTextField(MDTextField):
                     self.delete_selection()
                 self.insert_text(text_to_paste)
                 
+        # Закриваємо меню після команд Вирізати/Копіювати/Вставити
         if self.clipboard_menu:
             self.clipboard_menu.dismiss()
 
@@ -134,10 +160,8 @@ class MainScreen(MDScreen):
         
         self.table = None
         
-        # Основний фон додатку (Глибокий темний, як у YouTube Dark Mode)
         main_layout = MDBoxLayout(orientation='vertical', md_bg_color=[0.06, 0.06, 0.06, 1])
         
-        # Шапка в стилі YouTube
         header = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=[0.09, 0.09, 0.09, 1], padding=[dp(16), 0, dp(16), 0], spacing=dp(8))
         
         logo = MDIconButton(icon="youtube", theme_text_color="Custom", text_color=[1, 0, 0, 1], pos_hint={"center_y": .5})
@@ -182,7 +206,6 @@ class MainScreen(MDScreen):
         self.input_notes = AdvancedTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", size_hint_y=None, height=dp(100))
         content_layout.add_widget(self.input_notes)
         
-        # БЛОК КНОПОК: ОЧИСТИТИ та ЗБЕРЕГТИ
         btn_layout = MDBoxLayout(orientation='horizontal', spacing=dp(12), size_hint_y=None, height=dp(50))
         
         self.btn_clear = MDFlatButton(
@@ -193,7 +216,7 @@ class MainScreen(MDScreen):
         
         self.btn_add = MDRaisedButton(
             text="ЗБЕРЕГТИ В КАТАЛОГ", size_hint_x=0.65, size_hint_y=1, 
-            md_bg_color=[0.8, 0, 0, 1], # YouTube червоний
+            md_bg_color=[0.8, 0, 0, 1],
             theme_text_color="Custom", text_color=[1, 1, 1, 1]
         )
         self.btn_add.bind(on_release=self.process_add_video)
@@ -220,7 +243,6 @@ class MainScreen(MDScreen):
         
         Clock.schedule_once(self.delayed_init, 1.0)
 
-    # ФУНКЦІЯ ОЧИЩЕННЯ ПОЛІВ
     def clear_fields(self, instance):
         self.input_url.text = ""
         self.input_theme.text = ""
@@ -341,7 +363,7 @@ class MainScreen(MDScreen):
 
             card = MDCard(
                 orientation='horizontal', padding=dp(8), spacing=dp(12), size_hint_y=None, height=dp(90), 
-                elevation=2, radius=[dp(8)], md_bg_color=[0.12, 0.12, 0.12, 1] # Більш контрастні картки
+                elevation=2, radius=[dp(8)], md_bg_color=[0.12, 0.12, 0.12, 1]
             )
             
             thumb = ClickableThumbnail(source=img_url, size_hint_x=None, width=dp(110), allow_stretch=True, keep_ratio=False)
@@ -464,7 +486,7 @@ class MainScreen(MDScreen):
 
 class YouTubeCatalogApp(MDApp):
     def build(self):
-        self.theme_cls.primary_palette = "Red" # Змінили акцент на червоний
+        self.theme_cls.primary_palette = "Red" 
         self.theme_cls.theme_style = "Dark"
         return MainScreen()
 
