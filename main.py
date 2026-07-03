@@ -20,7 +20,7 @@ from kivy.uix.image import AsyncImage
 from kivy.uix.behaviors import ButtonBehavior
 
 # =====================================================================
-# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ: БУФЕР ОБМІНУ + АВТОПІДБІР БЕЗ БАГІВ
+# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ: БУФЕР ОБМІНУ + АВТОПІДБІР
 # =====================================================================
 class AdvancedTextField(MDTextField):
     def __init__(self, **kwargs):
@@ -134,11 +134,17 @@ class MainScreen(MDScreen):
         
         self.table = None
         
-        main_layout = MDBoxLayout(orientation='vertical')
+        # Основний фон додатку (Глибокий темний, як у YouTube Dark Mode)
+        main_layout = MDBoxLayout(orientation='vertical', md_bg_color=[0.06, 0.06, 0.06, 1])
         
-        header = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=[0.12, 0.58, 0.95, 1], padding=[dp(16), 0, dp(16), 0])
+        # Шапка в стилі YouTube
+        header = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=[0.09, 0.09, 0.09, 1], padding=[dp(16), 0, dp(16), 0], spacing=dp(8))
+        
+        logo = MDIconButton(icon="youtube", theme_text_color="Custom", text_color=[1, 0, 0, 1], pos_hint={"center_y": .5})
+        header.add_widget(logo)
+        
         header.add_widget(MDLabel(
-            text="YT Personal Guide", font_style="H6", halign="center", 
+            text="YT Personal Guide", font_style="H6", halign="left", 
             theme_text_color="Custom", text_color=[1, 1, 1, 1], bold=True
         ))
         main_layout.add_widget(header)
@@ -152,38 +158,55 @@ class MainScreen(MDScreen):
         btn_paste = MDIconButton(
             icon="content-paste",
             pos_hint={"center_y": .5},
-            on_release=self.paste_from_clipboard
+            on_release=self.paste_from_clipboard,
+            theme_text_color="Custom", text_color=[0.8, 0.8, 0.8, 1]
         )
         
         url_layout.add_widget(self.input_url)
         url_layout.add_widget(btn_paste)
         content_layout.add_widget(url_layout)
         
-        # Поле Теми тепер теж викликає оновлення фільтру при зміні тексту
         self.input_theme = AdvancedTextField(hint_text="Тема (клікніть для списку)", mode="rectangle", size_hint_y=None, height=dp(68))
         self.input_theme.bind(on_touch_down=self.on_theme_field_click)
         self.input_theme.bind(text=self.apply_filters)
         content_layout.add_widget(self.input_theme)
         
         self.input_subtheme = AdvancedTextField(hint_text="Підтема", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.input_subtheme.bind(text=self.apply_filters)
         content_layout.add_widget(self.input_subtheme)
         
         self.input_keywords = AdvancedTextField(hint_text="Ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
+        self.input_keywords.bind(text=self.apply_filters)
         content_layout.add_widget(self.input_keywords)
         
         self.input_notes = AdvancedTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", size_hint_y=None, height=dp(100))
         content_layout.add_widget(self.input_notes)
         
-        self.btn_add = MDRaisedButton(text="ЗБЕРЕГТИ В КАТАЛОГ", size_hint_x=1, size_hint_y=None, height=dp(50))
+        # БЛОК КНОПОК: ОЧИСТИТИ та ЗБЕРЕГТИ
+        btn_layout = MDBoxLayout(orientation='horizontal', spacing=dp(12), size_hint_y=None, height=dp(50))
+        
+        self.btn_clear = MDFlatButton(
+            text="ОЧИСТИТИ", size_hint_x=0.35, size_hint_y=1, 
+            theme_text_color="Custom", text_color=[0.7, 0.7, 0.7, 1]
+        )
+        self.btn_clear.bind(on_release=self.clear_fields)
+        
+        self.btn_add = MDRaisedButton(
+            text="ЗБЕРЕГТИ В КАТАЛОГ", size_hint_x=0.65, size_hint_y=1, 
+            md_bg_color=[0.8, 0, 0, 1], # YouTube червоний
+            theme_text_color="Custom", text_color=[1, 1, 1, 1]
+        )
         self.btn_add.bind(on_release=self.process_add_video)
-        content_layout.add_widget(self.btn_add)
+        
+        btn_layout.add_widget(self.btn_clear)
+        btn_layout.add_widget(self.btn_add)
+        content_layout.add_widget(btn_layout)
         
         self.status_label = MDLabel(text="Запуск інтерфейсу...", halign="center", theme_text_color="Secondary", size_hint_y=None, height=dp(40))
         self.status_label.bind(width=lambda *x: self.status_label.setter('text_size')(self.status_label, (self.status_label.width, None)))
         self.status_label.bind(texture_size=lambda *x: self.status_label.setter('height')(self.status_label, max(self.status_label.texture_size[1], dp(40))))
         content_layout.add_widget(self.status_label)
         
-        # Поле пошуку
         self.search_field = AdvancedTextField(hint_text="🔍 Пошук по базі...", mode="fill", size_hint_y=None, height=dp(60))
         self.search_field.bind(text=self.apply_filters)
         content_layout.add_widget(self.search_field)
@@ -196,6 +219,16 @@ class MainScreen(MDScreen):
         self.add_widget(main_layout)
         
         Clock.schedule_once(self.delayed_init, 1.0)
+
+    # ФУНКЦІЯ ОЧИЩЕННЯ ПОЛІВ
+    def clear_fields(self, instance):
+        self.input_url.text = ""
+        self.input_theme.text = ""
+        self.input_subtheme.text = ""
+        self.input_keywords.text = ""
+        self.input_notes.text = ""
+        self.search_field.text = ""
+        self.apply_filters()
 
     def paste_from_clipboard(self, instance):
         pasted_text = Clipboard.paste()
@@ -230,9 +263,6 @@ class MainScreen(MDScreen):
                 if theme: self.themes_set.add(theme)
                     
             self.update_theme_menu()
-            
-            # Замість простого display_records, викликаємо загальний фільтр,
-            # щоб застосувати поточні введені значення (якщо вони є)
             self.apply_filters()
             
             self.status_label.theme_text_color = "Primary"
@@ -241,25 +271,43 @@ class MainScreen(MDScreen):
             self.status_label.theme_text_color = "Error"
             self.status_label.text = f"Помилка зв'язку: {e}"
 
-    # ЄДИНА ФУНКЦІЯ ФІЛЬТРАЦІЇ ДЛЯ ТЕМИ І ПОШУКУ
     def apply_filters(self, *args):
+        theme_text = self.input_theme.text.strip().lower()
+        subtheme_text = self.input_subtheme.text.strip().lower()
+        keywords_text = self.input_keywords.text.strip()
         search_text = self.search_field.text.strip()
-        theme_text = self.input_theme.text.strip()
         
         filtered_records = self.all_records
         
-        # 1. Відсікаємо за темою (якщо поле Теми не порожнє)
         if theme_text:
             filtered_records = [
                 r for r in filtered_records 
-                if theme_text.lower() in r.get('fields', {}).get('Тема', '').lower()
+                if theme_text in r.get('fields', {}).get('Тема', '').lower()
             ]
             
-        # 2. Відсікаємо за загальним пошуком (якщо поле пошуку не порожнє)
+        if subtheme_text:
+            filtered_records = [
+                r for r in filtered_records 
+                if subtheme_text in r.get('fields', {}).get('Підтема', '').lower()
+            ]
+            
+        if keywords_text:
+            query_stems = [get_stem(w) for w in tokenize_text(keywords_text)]
+            temp_records = []
+            for record in filtered_records:
+                record_kws = record.get('fields', {}).get('Ключові слова', '')
+                base_stems = [get_stem(w) for w in tokenize_text(record_kws)]
+                match = True
+                for q_stem in query_stems:
+                    if not any(q_stem in b_stem or b_stem in q_stem for b_stem in base_stems):
+                        match = False
+                        break
+                if match: temp_records.append(record)
+            filtered_records = temp_records
+            
         if search_text:
             query_stems = [get_stem(w) for w in tokenize_text(search_text)]
             temp_records = []
-            
             for record in filtered_records:
                 fields = record.get('fields', {})
                 search_zone_text = " ".join([
@@ -275,7 +323,6 @@ class MainScreen(MDScreen):
                         match = False
                         break
                 if match: temp_records.append(record)
-                
             filtered_records = temp_records
             
         self.display_records(filtered_records)
@@ -294,7 +341,7 @@ class MainScreen(MDScreen):
 
             card = MDCard(
                 orientation='horizontal', padding=dp(8), spacing=dp(12), size_hint_y=None, height=dp(90), 
-                elevation=2, radius=[dp(8)], md_bg_color=[0.15, 0.15, 0.15, 1]
+                elevation=2, radius=[dp(8)], md_bg_color=[0.12, 0.12, 0.12, 1] # Більш контрастні картки
             )
             
             thumb = ClickableThumbnail(source=img_url, size_hint_x=None, width=dp(110), allow_stretch=True, keep_ratio=False)
@@ -328,7 +375,6 @@ class MainScreen(MDScreen):
     def set_theme(self, theme_text):
         self.input_theme.text = theme_text
         if self.menu: self.menu.dismiss()
-        # Метод apply_filters викликається автоматично, бо ми змінили текст поля!
 
     def process_add_video(self, instance):
         url = self.input_url.text.strip()
@@ -352,7 +398,6 @@ class MainScreen(MDScreen):
             })
             self.input_url.text = ""
             self.input_notes.text = ""
-            # Оновлюємо дані, зберігаючи обрану тему (щоб зручно було додати наступне відео в ту ж категорію)
             self.load_data_from_base()
         except Exception as e:
             self.status_label.theme_text_color = "Error"
@@ -381,7 +426,7 @@ class MainScreen(MDScreen):
             buttons=[
                 MDFlatButton(text="ВИДАЛИТИ", theme_text_color="Error", on_release=self.delete_record),
                 MDFlatButton(text="СКАСУВАТИ", on_release=lambda x: self.dialog.dismiss()),
-                MDRaisedButton(text="ЗБЕРЕГТИ", on_release=self.save_edited_data),
+                MDRaisedButton(text="ЗБЕРЕГТИ", md_bg_color=[0.8, 0, 0, 1], on_release=self.save_edited_data),
             ],
         )
         self.dialog.open()
@@ -419,7 +464,7 @@ class MainScreen(MDScreen):
 
 class YouTubeCatalogApp(MDApp):
     def build(self):
-        self.theme_cls.primary_palette = "Blue"
+        self.theme_cls.primary_palette = "Red" # Змінили акцент на червоний
         self.theme_cls.theme_style = "Dark"
         return MainScreen()
 
