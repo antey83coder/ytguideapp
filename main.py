@@ -20,12 +20,18 @@ from kivy.uix.image import AsyncImage
 from kivy.uix.behaviors import ButtonBehavior
 
 # =====================================================================
-# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ З ПРИМУСОВИМ СИСТЕМНИМ БУФЕРОМ ТА ПІДКАЗКАМИ
+# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ: БУФЕР ОБМІНУ + АВТОПІДБІР БЕЗ БАГІВ
 # =====================================================================
 class AdvancedTextField(MDTextField):
     def __init__(self, **kwargs):
-        # Примусово вмикаємо підказки (Т9/словник) клавіатури смартфона
+        # 1. Вмикаємо розумний автопідбір тексту Android (Т9)
         kwargs['keyboard_suggestions'] = True
+        
+        # 2. ТРЮК: Робимо всі поля багаторядковими, щоб Kivy не конфліктував
+        # з клавіатурою Android і не дублював текст.
+        if 'multiline' not in kwargs:
+            kwargs['multiline'] = True
+            
         if 'input_type' not in kwargs:
             kwargs['input_type'] = 'text'
             
@@ -166,7 +172,7 @@ class MainScreen(MDScreen):
         self.input_keywords = AdvancedTextField(hint_text="Ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
         content_layout.add_widget(self.input_keywords)
         
-        self.input_notes = AdvancedTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
+        self.input_notes = AdvancedTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", size_hint_y=None, height=dp(100))
         content_layout.add_widget(self.input_notes)
         
         self.btn_add = MDRaisedButton(text="ЗБЕРЕГТИ В КАТАЛОГ", size_hint_x=1, size_hint_y=None, height=dp(50))
@@ -345,7 +351,7 @@ class MainScreen(MDScreen):
             
         self.edit_subtheme = AdvancedTextField(text=target_fields.get('Підтема', ''), hint_text="Редагувати підтему", mode="rectangle", size_hint_y=None, height=dp(68))
         self.edit_keywords = AdvancedTextField(text=target_fields.get('Ключові слова', ''), hint_text="Редагувати ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
-        self.edit_notes = AdvancedTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", multiline=True, size_hint_y=None, height=dp(100))
+        self.edit_notes = AdvancedTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", size_hint_y=None, height=dp(100))
         
         dialog_layout = MDBoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None, height=dp(260))
         dialog_layout.add_widget(self.edit_subtheme)
