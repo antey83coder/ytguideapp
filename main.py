@@ -25,11 +25,10 @@ from kivy.uix.widget import Widget
 # =====================================================================
 class AdvancedTextField(MDTextField):
     def __init__(self, **kwargs):
-        # Повністю вимикаємо Т9/підказки, щоб гарантувати відсутність хаотичного вводу
+        # ЄДИНИЙ СПОСІБ ЗУПИНИТИ ХАОС В KIVY: 
+        # Жорстко вимикаємо Т9 і примусово забороняємо багаторядковість!
         kwargs['keyboard_suggestions'] = False
-        
-        if 'multiline' not in kwargs:
-            kwargs['multiline'] = True
+        kwargs['multiline'] = False
             
         if 'input_type' not in kwargs:
             kwargs['input_type'] = 'text'
@@ -138,7 +137,7 @@ class MainScreen(MDScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.all_records = []  
-        self.theme_counts = {} # Словник для збереження кількості відео по темах
+        self.theme_counts = {} 
         self.dialog = None      
         self.current_edit_id = None 
         self.menu = None
@@ -158,10 +157,8 @@ class MainScreen(MDScreen):
             theme_text_color="Custom", text_color=[1, 1, 1, 1], bold=True, size_hint_x=None, width=dp(180)
         ))
         
-        # Пустий віджет, щоб "відштовхнути" лічильник вправо
         header.add_widget(Widget())
         
-        # Лічильник усіх відео
         self.total_count_label = MDLabel(
             text="Всього: 0", font_style="Caption", halign="right", 
             theme_text_color="Custom", text_color=[0.6, 0.6, 0.6, 1], pos_hint={"center_y": .5}
@@ -200,7 +197,8 @@ class MainScreen(MDScreen):
         self.input_keywords.bind(text=self.apply_filters)
         content_layout.add_widget(self.input_keywords)
         
-        self.input_notes = AdvancedTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", size_hint_y=None, height=dp(100))
+        # Поле нотаток тепер ТЕЖ однорядкове, висота dp(68), як і у всіх
+        self.input_notes = AdvancedTextField(hint_text="Нотатки / Короткий зміст", mode="rectangle", size_hint_y=None, height=dp(68))
         content_layout.add_widget(self.input_notes)
         
         btn_layout = MDBoxLayout(orientation='horizontal', spacing=dp(12), size_hint_y=None, height=dp(50))
@@ -276,10 +274,8 @@ class MainScreen(MDScreen):
             self.status_label.text = "Синхронізація..."
             self.all_records = self.table.all()
             
-            # Оновлюємо лічильник усіх відео
             self.total_count_label.text = f"Всього: {len(self.all_records)}"
             
-            # Рахуємо кількість роликів для кожної теми
             self.theme_counts.clear()
             for record in self.all_records:
                 theme = record.get('fields', {}).get("Тема")
@@ -386,7 +382,6 @@ class MainScreen(MDScreen):
     def update_theme_menu(self):
         if not self.theme_counts: return
         menu_items = [
-            # В меню показуємо назву теми + кількість, але при кліку передаємо тільки чисту назву
             {"viewclass": "OneLineListItem", "text": f"{theme} ({count})", "on_release": lambda x=theme: self.set_theme(x)}
             for theme, count in sorted(self.theme_counts.items())
         ]
@@ -439,9 +434,12 @@ class MainScreen(MDScreen):
             
         self.edit_subtheme = AdvancedTextField(text=target_fields.get('Підтема', ''), hint_text="Редагувати підтему", mode="rectangle", size_hint_y=None, height=dp(68))
         self.edit_keywords = AdvancedTextField(text=target_fields.get('Ключові слова', ''), hint_text="Редагувати ключові слова", mode="rectangle", size_hint_y=None, height=dp(68))
-        self.edit_notes = AdvancedTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", size_hint_y=None, height=dp(100))
         
-        dialog_layout = MDBoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None, height=dp(260))
+        # Поле нотаток в діалозі тепер теж dp(68)
+        self.edit_notes = AdvancedTextField(text=target_fields.get('Нотатки', ''), hint_text="Редагувати нотатки", mode="rectangle", size_hint_y=None, height=dp(68))
+        
+        # Зменшено висоту діалогового вікна, бо поля стали меншими
+        dialog_layout = MDBoxLayout(orientation="vertical", spacing=dp(12), size_hint_y=None, height=dp(230))
         dialog_layout.add_widget(self.edit_subtheme)
         dialog_layout.add_widget(self.edit_keywords)
         dialog_layout.add_widget(self.edit_notes)
