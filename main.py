@@ -18,13 +18,15 @@ from kivymd.uix.dialog import MDDialog
 from kivymd.uix.card import MDCard
 from kivy.uix.image import AsyncImage
 from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.widget import Widget
 
 # =====================================================================
-# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ: БУФЕР ОБМІНУ + ФІКС КЛАВІАТУРИ + ВИДІЛИТИ ВСЕ
+# КАСТОМНЕ ТЕКСТОВЕ ПОЛЕ: ЖОРСТКИЙ ФІКС ХАОСУ + БУФЕР ОБМІНУ
 # =====================================================================
 class AdvancedTextField(MDTextField):
     def __init__(self, **kwargs):
-        kwargs['keyboard_suggestions'] = True
+        # Повністю вимикаємо Т9/підказки, щоб гарантувати відсутність хаотичного вводу
+        kwargs['keyboard_suggestions'] = False
         
         if 'multiline' not in kwargs:
             kwargs['multiline'] = True
@@ -34,20 +36,6 @@ class AdvancedTextField(MDTextField):
             
         super().__init__(**kwargs)
         self.clipboard_menu = None
-        self._first_focus = True
-        self.bind(focus=self._on_focus_fix)
-
-    # Автоматичний фікс "хаотичного вводу" при першому натисканні
-    def _on_focus_fix(self, instance, value):
-        if value and self._first_focus:
-            self._first_focus = False
-            Clock.schedule_once(self._sync_ime, 0.1)
-
-    def _sync_ime(self, dt):
-        if not self.text:
-            # Вставляємо і стираємо пробіл, щоб примусово синхронізувати Gboard
-            self.text = " "
-            self.text = ""
 
     def on_touch_down(self, touch):
         result = super().on_touch_down(touch)
@@ -58,7 +46,6 @@ class AdvancedTextField(MDTextField):
         return result
 
     def show_clipboard_menu(self):
-        # Додано "Виділити все"
         menu_items = [
             {"viewclass": "OneLineListItem", "text": "✅ Виділити все", "on_release": lambda: self.handle_action("select_all")},
             {"viewclass": "OneLineListItem", "text": "✂️ Вирізати", "on_release": lambda: self.handle_action("cut")},
@@ -69,14 +56,13 @@ class AdvancedTextField(MDTextField):
             caller=self, 
             items=menu_items, 
             width_mult=3,
-            max_height=dp(230), # Збільшено висоту для 4 кнопок
+            max_height=dp(230), 
             position="bottom"
         )
         self.clipboard_menu.open()
 
     def handle_action(self, action):
         if action == "select_all":
-            # Виділяємо текст, але НЕ закриваємо меню, щоб користувач міг обрати наступну дію
             Clock.schedule_once(lambda dt: self.select_all(), 0.05)
             return
             
@@ -101,7 +87,6 @@ class AdvancedTextField(MDTextField):
                     self.delete_selection()
                 self.insert_text(text_to_paste)
                 
-        # Закриваємо меню після команд Вирізати/Копіювати/Вставити
         if self.clipboard_menu:
             self.clipboard_menu.dismiss()
 
@@ -153,7 +138,7 @@ class MainScreen(MDScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.all_records = []  
-        self.themes_set = set() 
+        self.theme_counts = {} # Словник для збереження кількості відео по темах
         self.dialog = None      
         self.current_edit_id = None 
         self.menu = None
@@ -162,6 +147,7 @@ class MainScreen(MDScreen):
         
         main_layout = MDBoxLayout(orientation='vertical', md_bg_color=[0.06, 0.06, 0.06, 1])
         
+        # ШАПКА З ЛІЧИЛЬНИКОМ ВСЬОГО ВІДЕО
         header = MDBoxLayout(size_hint_y=None, height=dp(56), md_bg_color=[0.09, 0.09, 0.09, 1], padding=[dp(16), 0, dp(16), 0], spacing=dp(8))
         
         logo = MDIconButton(icon="youtube", theme_text_color="Custom", text_color=[1, 0, 0, 1], pos_hint={"center_y": .5})
@@ -169,8 +155,19 @@ class MainScreen(MDScreen):
         
         header.add_widget(MDLabel(
             text="YT Personal Guide", font_style="H6", halign="left", 
-            theme_text_color="Custom", text_color=[1, 1, 1, 1], bold=True
+            theme_text_color="Custom", text_color=[1, 1, 1, 1], bold=True, size_hint_x=None, width=dp(180)
         ))
+        
+        # Пустий віджет, щоб "відштовхнути" лічильник вправо
+        header.add_widget(Widget())
+        
+        # Лічильник усіх відео
+        self.total_count_label = MDLabel(
+            text="Всього: 0", font_style="Caption", halign="right", 
+            theme_text_color="Custom", text_color=[0.6, 0.6, 0.6, 1], pos_hint={"center_y": .5}
+        )
+        header.add_widget(self.total_count_label)
+        
         main_layout.add_widget(header)
         
         scroll = MDScrollView(do_scroll_x=False)
@@ -278,11 +275,16 @@ class MainScreen(MDScreen):
         try:
             self.status_label.text = "Синхронізація..."
             self.all_records = self.table.all()
-            self.themes_set.clear()
             
+            # Оновлюємо лічильник усіх відео
+            self.total_count_label.text = f"Всього: {len(self.all_records)}"
+            
+            # Рахуємо кількість роликів для кожної теми
+            self.theme_counts.clear()
             for record in self.all_records:
                 theme = record.get('fields', {}).get("Тема")
-                if theme: self.themes_set.add(theme)
+                if theme:
+                    self.theme_counts[theme] = self.theme_counts.get(theme, 0) + 1
                     
             self.update_theme_menu()
             self.apply_filters()
@@ -382,10 +384,11 @@ class MainScreen(MDScreen):
             self.video_list.add_widget(card)
 
     def update_theme_menu(self):
-        if not self.themes_set: return
+        if not self.theme_counts: return
         menu_items = [
-            {"viewclass": "OneLineListItem", "text": theme, "on_release": lambda x=theme: self.set_theme(x)}
-            for theme in sorted(list(self.themes_set))
+            # В меню показуємо назву теми + кількість, але при кліку передаємо тільки чисту назву
+            {"viewclass": "OneLineListItem", "text": f"{theme} ({count})", "on_release": lambda x=theme: self.set_theme(x)}
+            for theme, count in sorted(self.theme_counts.items())
         ]
         self.menu = MDDropdownMenu(caller=self.input_theme, items=menu_items, width_mult=4, max_height=dp(250))
 
